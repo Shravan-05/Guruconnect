@@ -262,6 +262,82 @@ exports.joinSession = async (req, res, next) => {
     next(error);
   }
 };
+exports.cancelBooking = async (req, res, next) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findById(bookingId).populate("mentorId");
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found"
+      });
+    }
+
+    if (booking.status === "completed" || booking.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot cancel this booking"
+      });
+    }
+
+    const sessionStart = new Date(
+      `${booking.date.toISOString().split("T")[0]}T${booking.time}`
+    );
+
+    const hoursBeforeSession =
+      (sessionStart - new Date()) / (1000 * 60 * 60);
+
+    let refundPercentage = 0;
+
+    // 🔥 MENTOR CANCELS → FULL REFUND
+    if (req.user.role === "mentor") {
+      refundPercentage = 100;
+      booking.cancelledBy = "mentor";
+    }
+
+    // 🔥 CANDIDATE CANCELS
+    if (req.user.role === "candidate") {
+      booking.cancelledBy = "candidate";
+
+      if (hoursBeforeSession >= 24) {
+        refundPercentage = 100;
+      } else if (hoursBeforeSession >= 1) {
+        refundPercentage = 50;
+      } else {
+        refundPercentage = 0;
+      }
+    }
+
+    // 💰 Calculate refund
+const amount = booking.amount || 0;
+const refundAmount = (amount * refundPercentage) / 100;
+
+booking.status = "cancelled";
+booking.refundAmount = refundAmount;
+
+if (refundPercentage > 0) {
+  booking.paymentStatus = "refunded";
+}
+
+
+    await booking.save();
+
+    res.json({
+      success: true,
+      refundPercentage,
+      refundAmount,
+      message:
+        refundPercentage > 0
+          ? `Refund of ${refundPercentage}% initiated`
+          : "No refund as per cancellation policy"
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 /**
@@ -277,24 +353,74 @@ exports.autoCloseSessions = async () => {
   });
 
   for (const booking of bookings) {
+
     const start = new Date(
       `${booking.date.toISOString().split("T")[0]}T${booking.time}`
     );
+
     const end = new Date(start.getTime() + booking.duration * 60000);
 
     if (now > end) {
-      if (
-        booking.attendance.mentorJoinedAt &&
-        booking.attendance.candidateJoinedAt
-      ) {
+
+      const mentorJoined = booking.attendance?.mentorJoinedAt;
+      const candidateJoined = booking.attendance?.candidateJoinedAt;
+
+      /* =========================
+         BOTH JOINED → SUCCESS
+      ========================= */
+      if (mentorJoined && candidateJoined) {
+
         booking.status = "completed";
-        booking.paymentStatus =
-          booking.sessionType === "paid" ? "paid" : "not-required";
-      } else {
-        booking.status = "cancelled";
-        booking.paymentStatus =
-          booking.sessionType === "paid" ? "refunded" : "not-required";
+
+        if (booking.sessionType === "paid") {
+          booking.paymentStatus = "paid";
+        } else {
+          booking.paymentStatus = "not-required";
+        }
       }
+
+      /* =========================
+         MENTOR NO-SHOW
+         → FULL REFUND
+      ========================= */
+      else if (!mentorJoined && candidateJoined) {
+
+        booking.status = "cancelled";
+
+        if (booking.sessionType === "paid") {
+          booking.paymentStatus = "refunded";
+booking.refundAmount = booking.amount;
+        }
+      }
+
+      /* =========================
+         CANDIDATE NO-SHOW
+         → NO REFUND
+      ========================= */
+      else if (mentorJoined && !candidateJoined) {
+
+        booking.status = "cancelled";
+
+        if (booking.sessionType === "paid") {
+          booking.paymentStatus = "paid"; // mentor keeps payment
+          booking.refundAmount = 0;
+        }
+      }
+
+      /* =========================
+         BOTH DID NOT JOIN
+         → NO REFUND
+      ========================= */
+      else {
+
+        booking.status = "cancelled";
+
+        if (booking.sessionType === "paid") {
+          booking.paymentStatus = "paid";
+          booking.refundAmount = 0;
+        }
+      }
+
       await booking.save();
     }
   }

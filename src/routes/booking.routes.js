@@ -46,5 +46,10 @@ router.post(
   protect,
   joinSession
 );
+router.put(
+  "/:bookingId/cancel",
+  protect,
+  cancelBooking
+);
 
 module.exports = router;

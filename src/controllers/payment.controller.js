@@ -25,14 +25,22 @@ exports.createPayment = async (req, res, next) => {
       });
     }
 
-    // Mock payment success
+    if (booking.amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking amount"
+      });
+    }
+
     booking.paymentStatus = "paid";
     booking.status = "confirmed";
+
     await booking.save();
 
     res.json({
       success: true,
       message: "Payment successful (mock)",
+      amount: booking.amount,
       booking
     });
 

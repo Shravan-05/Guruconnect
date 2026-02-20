@@ -55,7 +55,17 @@ const bookingSchema = new mongoose.Schema(
     attendance: {
       mentorJoinedAt: Date,
       candidateJoinedAt: Date
-    }
+    },
+    refundAmount: {
+  type: Number,
+  default: 0
+},
+cancellationReason: String,
+cancelledBy: {
+  type: String,
+  enum: ["candidate", "mentor"]
+}
+
   },
   { timestamps: true }
 );

@@ -27,6 +27,7 @@ app.use("/api/candidate", require("./routes/candidate.routes"));
 app.use("/api/mentor", require("./routes/mentorRoutes"));
 app.use("/api/booking", require("./routes/booking.routes"));
 app.use("/api/payment", require("./routes/payment.routes"));
+app.use("/api/review", require("./routes/review.routes"));
 
 // --------------------
 // Global Error Handler (LAST)

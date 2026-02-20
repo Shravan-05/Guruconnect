@@ -62,6 +62,14 @@ const mentorSchema = new mongoose.Schema(
         endTime: { type: String, required: true }
       }
     ],
+    averageRating: {
+  type: Number,
+  default: 0
+},
+totalReviews: {
+  type: Number,
+  default: 0
+},
 
     location: {
       type: {
